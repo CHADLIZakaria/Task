@@ -1,0 +1,13 @@
+databaseChangeLog:
+  - changeSet:
+      id: create-task-table
+      author: zakaria
+      preConditions:
+        onFail: MARK_RAN
+        not:
+          tableExists:
+            tableName: task
+      changes:
+        - sqlFile:
+            path: db/changelog/create_task_table.sql
+            relativeToChangelogFile: false

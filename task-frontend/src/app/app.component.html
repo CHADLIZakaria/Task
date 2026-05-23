@@ -1,0 +1,29 @@
+<h3>Tasks</h3>
+  <button
+    mat-raised-button 
+    color="accent"
+    (click)="openDialog()">
+    Add
+    <mat-icon>library_add</mat-icon>
+  </button>
+@if (taskService.tasks.isLoading()) {
+  <app-loading />
+}
+@else {
+  <mat-nav-list>
+    @if (taskService.tasks.value()?.data?.length === 0) {
+      <app-alert message="Add your first task" type="danger" />
+    }
+    @else {
+      @for (task of taskService.tasks.value()?.data; track task) {
+        <a mat-list-item>
+        <mat-icon matListItemIcon>note</mat-icon>
+        <span matListItemTitle>{{ task.description| titlecase }}</span>
+        <div matListItemMeta>
+          <mat-icon>delete</mat-icon>
+        </div>
+      </a>
+    }
+  }
+  </mat-nav-list>
+}

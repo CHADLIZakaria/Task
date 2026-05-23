@@ -1,0 +1,23 @@
+@use '@angular/material' as mat;
+
+@include mat.core();
+
+// Define Material 3 theme
+$theme: mat.define-theme((
+  color: (
+    theme-type: light,
+    primary: mat.$azure-palette, // ✅ supported palette
+  ),
+  density: (scale: 0),
+  typography: (),
+));
+
+html {
+  @include mat.all-component-themes($theme);
+}
+
+.justify-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

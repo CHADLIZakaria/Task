@@ -12,9 +12,11 @@ services:
     container_name: task-backend
     ports:
       - "8080:8080"
-    deponds_on:
+    depends_on:
       - mysql
     environment:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/taskdb
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: root
+      CORS_URL: http://localhost:8080
+      SPRING_PROFILES_ACTIVE: prod

@@ -15,7 +15,7 @@ pipeline {
     stage('Docker build') {
       steps {
         dir('task-backend') {
-          sh 'docker build -t $IMAGE:$TAG .'
+            sh 'docker build --network host -t $IMAGE:$TAG .'
         }
       }
     }

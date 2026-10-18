@@ -13,9 +13,11 @@ pipeline {
       }
     }
     stage('Docker build') {
-       dir('task-backend') {
+      steps {
+        dir('task-backend') {
           sh 'docker build -t $IMAGE:$TAG .'
         }
+      }
     }
   }
   post {

@@ -1,12 +1,12 @@
-<form class="example-form">
+<form class="example-form" (ngSubmit)="save()" [formGroup]="taskForm">
     <mat-form-field class="example-full-width">
         <mat-label>Description</mat-label>
-        <input matInput placeholder="Enter description">
+        <input matInput placeholder="Enter description" formControlName="description">
     </mat-form-field>
     <button
+        type="submit"
         mat-raised-button 
-        color="accent"
-        (click)="save()">
+        color="accent">
         Save
   </button>
 </form>

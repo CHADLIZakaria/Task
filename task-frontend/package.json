@@ -23,10 +23,13 @@
     "zone.js": "~0.15.0"
   },
   "devDependencies": {
-    "@angular/build": "^21.2.0",    
-    "@angular/material": "^21.2.0",
+    "@angular/build": "^21.2.0",
     "@angular/cdk": "^21.2.0",
+    "@angular/cli": "^21.2.27",
     "@angular/compiler-cli": "^21.2.14",
+    "@angular/material": "^21.2.0",
+    "@emnapi/core": "^1.11.3",
+    "@emnapi/runtime": "^1.11.3",
     "@types/jasmine": "~5.1.0",
     "jasmine-core": "~5.5.0",
     "karma": "~6.4.0",

@@ -7,13 +7,15 @@ pipeline {
   stages {
     stage('Build & Test') {
       steps {
-        sh 'docker run --rm -v "$PWD":/app -w /app maven:3.9-eclipse-temurin-21 mvn -B verify'
+        dir('task-backend') {
+          sh 'docker run --rm -v "$PWD":/app -w /app maven:3.9-eclipse-temurin-21 mvn -B verify'
+        }
       }
     }
     stage('Docker build') {
-      steps {
-        sh 'docker build -t $IMAGE:$TAG .'
-      }
+       dir('task-backend') {
+          sh 'docker build -t $IMAGE:$TAG .'
+        }
     }
   }
   post {

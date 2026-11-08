@@ -27,16 +27,23 @@ pipeline {
                 dir('task-backend') {
                     script {
                         env.TAG = sh(
-                            script: """
-                                sed '/<parent>/,/<\\/parent>/d' pom.xml |
-                                sed -n 's/^[[:space:]]*<version>\\([^<]*\\)<\\/version>[[:space:]]*$/\\1/p' |
-                                head -n 1
-                            """,
+                            script: '''
+                        awk '
+                            /<parent>/ { parent=1 }
+                            /<\\/parent>/ { parent=0; next }
+                            !parent && /<version>/ {
+                                gsub(/.*<version>/, "")
+                                gsub(/<\\/version>.*/, "")
+                                print
+                                exit
+                            }
+                        ' pom.xml
+                    ''',
                             returnStdout: true
                         ).trim()
 
                         if (!env.TAG) {
-                            error('Impossible de récupérer la version depuis pom.xml')
+                            error('Version introuvable dans pom.xml')
                         }
 
                         echo "Application version: ${env.TAG}"

@@ -1,50 +1,102 @@
 pipeline {
-  agent any
-  environment {
-    REGISTRY_USER = "zchadli"
-    IMAGE = "${REGISTRY_USER}/task-backend"
-    TAG   = "${env.BUILD_NUMBER}"
-  }
-  stages {
-    stage('Build & Test') {
-      steps {
-        dir('task-backend') {
-          sh 'docker run --rm --network host -v "$PWD":/app -w /app maven:3.9-eclipse-temurin-21 mvn -B verify'
-        }
-      }
+    agent any
+
+    environment {
+        REGISTRY_USER = 'zchadli'
+        IMAGE = "${REGISTRY_USER}/task-backend"
     }
-    stage('Docker build') {
-      steps {
-        dir('task-backend') {
-          sh 'docker build --network host -t $IMAGE:$TAG .'
+
+    stages {
+
+        stage('Build & Test') {
+            steps {
+                dir('task-backend') {
+                    sh '''
+                        docker run --rm --network host \
+                            -v "$PWD":/app \
+                            -w /app \
+                            maven:3.9-eclipse-temurin-21 \
+                            mvn -B verify
+                    '''
+                }
+            }
         }
-      }
-    }
-    stage('Push') {
-      steps {
-        withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DH_USER', passwordVariable: 'DH_PASS')]) {
-          sh '''
-            echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
-            docker push $IMAGE:$TAG
-          '''
+
+        stage('Get Version') {
+            steps {
+                script {
+                    env.TAG = sh(
+                        script: '''
+                            docker run --rm \
+                                -v "$WORKSPACE/task-backend":/app \
+                                -w /app \
+                                maven:3.9-eclipse-temurin-21 \
+                                mvn -q help:evaluate \
+                                -Dexpression=project.version \
+                                -DforceStdout
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+                    echo "Application version: ${env.TAG}"
+                }
+            }
         }
-      }
-    }
-    stage('Deploy') {
-      steps {
-        dir('task-backend') {
-          sh '''
-            helm upgrade --install task-backend ./chart \
-              --set image.repository=$IMAGE \
-              --set image.tag=$TAG \
-              --namespace task --create-namespace \
-              --wait --timeout 3m
-          '''
+
+        stage('Docker Build') {
+            steps {
+                dir('task-backend') {
+                    sh '''
+                        docker build --network host \
+                            -t ${IMAGE}:${TAG} .
+                    '''
+                }
+            }
         }
-      }
+
+        stage('Push') {
+            steps {
+                withCredentials([
+                        usernamePassword(
+                            credentialsId: 'dockerhub',
+                            usernameVariable: 'DH_USER',
+                            passwordVariable: 'DH_PASS'
+                        )
+                    ]) {
+                    sh '''
+                        echo "$DH_PASS" | docker login \
+                            -u "$DH_USER" --password-stdin
+
+                        docker push ${IMAGE}:${TAG}
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                dir('task-backend') {
+                    sh '''
+                        helm upgrade --install task-backend ./chart \
+                            --set-string image.repository=${IMAGE} \
+                            --set-string image.tag=${TAG} \
+                            --namespace task \
+                            --create-namespace \
+                            --wait \
+                            --timeout 3m
+                    '''
+                }
+            }
+        }
     }
-  }
-  post {
-    failure { echo 'Pipeline en échec' }
-  }
+
+    post {
+        success {
+            echo "Pipeline successful! Deployed version: ${TAG}"
+        }
+
+        failure {
+            echo 'Pipeline en échec'
+        }
+    }
 }

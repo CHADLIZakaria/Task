@@ -6,6 +6,10 @@ pipeline {
         IMAGE = "${REGISTRY_USER}/task-backend"
     }
 
+    triggers {
+        githubPush()
+    }
+
     stages {
 
         stage('Build & Test') {

@@ -24,21 +24,23 @@ pipeline {
 
         stage('Get Version') {
             steps {
-                script {
-                    env.TAG = sh(
-                        script: '''
-                            docker run --rm \
-                                -v "$WORKSPACE/task-backend":/app \
-                                -w /app \
-                                maven:3.9-eclipse-temurin-21 \
-                                mvn -q help:evaluate \
-                                -Dexpression=project.version \
-                                -DforceStdout
-                        ''',
-                        returnStdout: true
-                    ).trim()
+                dir('task-backend') {
+                    script {
+                        env.TAG = sh(
+                            script: """
+                                sed '/<parent>/,/<\\/parent>/d' pom.xml |
+                                sed -n 's/^[[:space:]]*<version>\\([^<]*\\)<\\/version>[[:space:]]*$/\\1/p' |
+                                head -n 1
+                            """,
+                            returnStdout: true
+                        ).trim()
 
-                    echo "Application version: ${env.TAG}"
+                        if (!env.TAG) {
+                            error('Impossible de récupérer la version depuis pom.xml')
+                        }
+
+                        echo "Application version: ${env.TAG}"
+                    }
                 }
             }
         }

@@ -5,7 +5,7 @@ pipeline {
         // Docker Hub
         DOCKER_IMAGE = 'zchadli/task-frontend'
         DOCKER_TAG = "${BUILD_NUMBER}"
-        DOCKER_CREDENTIALS = 'dockerhub-credentials'
+        DOCKER_CREDENTIALS = 'dockerhub'
 
         // SonarQube
         SONAR_SERVER = 'SonarQube'
@@ -16,66 +16,75 @@ pipeline {
         K8S_DEPLOYMENT = 'task-frontend'
         K8S_CONTAINER = 'task-frontend'
 
-        // Angular output directory
+        // Angular
+        ANGULAR_DIR = 'task-frontend'
         ANGULAR_DIST = 'dist/task-frontend/browser'
     }
 
     stages {
 
-        stage('Checkout') {
-            steps {
-                echo 'Checking out Angular frontend'
-                checkout scm
-            }
-        }
-
         stage('Install Dependencies') {
             steps {
-                echo 'Installing Angular dependencies'
-                sh '''
-                    docker run --rm \
-                    -v "$WORKSPACE:/app" \
-                    -w /app \
-                    node:22-alpine \
-                    sh -c "npm ci"
-                '''
+                dir('task-frontend') {
+                    echo 'Installing Angular dependencies'
+
+                    sh '''
+                        docker run --rm \
+                        -v "$PWD:/app" \
+                        -w /app \
+                        node:22-alpine \
+                        sh -c "npm ci"
+                    '''
+                }
             }
         }
 
         stage('Angular Production Build') {
             steps {
-                echo 'Building Angular application'
-                sh '''
-                    docker run --rm \
-                    -v "$WORKSPACE:/app" \
-                    -w /app \
-                    node:22-alpine \
-                    sh -c "npm run build -- --configuration production"
-                '''
+                dir('task-frontend') {
+                    echo 'Building Angular application'
+
+                    sh '''
+                        docker run --rm \
+                        -v "$PWD:/app" \
+                        -w /app \
+                        node:22-alpine \
+                        sh -c "npm run build -- --configuration production"
+                    '''
+
+                    sh '''
+                        test -d "${ANGULAR_DIST}" || {
+                            echo "Angular dist directory not found!"
+                            exit 1
+                        }
+                    '''
+                }
             }
         }
 
         stage('Tests') {
             steps {
-                echo 'No automated Angular tests configured yet.'
-                echo 'Skipping tests for now.'
+                echo 'No automated tests configured yet.'
+                echo 'Skipping tests.'
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                script {
-                    def scannerHome = tool 'SonarScanner'
+                dir('task-frontend') {
+                    script {
+                        def scannerHome = tool 'SonarScanner'
 
-                    withSonarQubeEnv("${SONAR_SERVER}") {
-                        sh """
-                            ${scannerHome}/bin/sonar-scanner \
-                            -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
-                            -Dsonar.projectName=task-frontend \
-                            -Dsonar.sources=src \
-                            -Dsonar.sourceEncoding=UTF-8 \
-                            -Dsonar.exclusions=**/node_modules/**,**/dist/**
-                        """
+                        withSonarQubeEnv("${SONAR_SERVER}") {
+                            sh """
+                                ${scannerHome}/bin/sonar-scanner \
+                                -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                                -Dsonar.projectName=task-frontend \
+                                -Dsonar.sources=src \
+                                -Dsonar.sourceEncoding=UTF-8 \
+                                -Dsonar.exclusions=**/node_modules/**,**/dist/**
+                            """
+                        }
                     }
                 }
             }
@@ -86,9 +95,12 @@ pipeline {
                 timeout(time: 5, unit: 'MINUTES') {
                     script {
                         def qualityGate = waitForQualityGate()
+
                         if (qualityGate.status != 'OK') {
-                            error "SonarQube Quality Gate failed: ${qualityGate.status}"
+                            error "Quality Gate failed: ${qualityGate.status}"
                         }
+
+                        echo 'SonarQube Quality Gate passed!'
                     }
                 }
             }
@@ -96,14 +108,15 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-                echo 'Building Angular Docker image'
+                dir('task-frontend') {
+                    echo 'Building Angular Docker image'
 
-                sh '''
-                    docker build \
-                    --build-arg DIST_DIR=${ANGULAR_DIST} \
-                    -t ${DOCKER_IMAGE}:${DOCKER_TAG} \
-                    -t ${DOCKER_IMAGE}:latest .
-                '''
+                    sh '''
+                        docker build \
+                        -t ${DOCKER_IMAGE}:${DOCKER_TAG} \
+                        -t ${DOCKER_IMAGE}:latest .
+                    '''
+                }
             }
         }
 
@@ -120,7 +133,8 @@ pipeline {
                 ]) {
                     sh '''
                         echo "$DOCKER_PASS" | docker login \
-                            -u "$DOCKER_USER" --password-stdin
+                        -u "$DOCKER_USER" \
+                        --password-stdin
 
                         docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
                         docker push ${DOCKER_IMAGE}:latest

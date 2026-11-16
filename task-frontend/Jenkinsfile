@@ -33,7 +33,7 @@ pipeline {
                         -v "$PWD:/app" \
                         -w /app \
                         node:22-alpine \
-                        sh -c "npm ci"
+                        sh -c "npm cache clean --force && npm ci --no-audit --no-fund"
                     '''
                 }
             }

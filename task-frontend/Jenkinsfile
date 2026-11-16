@@ -32,9 +32,13 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 echo 'Installing Angular dependencies'
-                sh 'node --version'
-                sh 'npm --version'
-                sh 'npm ci'
+                sh '''
+                    docker run --rm \
+                    -v "$WORKSPACE:/app" \
+                    -w /app \
+                    node:22-alpine \
+                    sh -c "npm ci"
+                '''
             }
         }
 
@@ -42,14 +46,11 @@ pipeline {
             steps {
                 echo 'Building Angular application'
                 sh '''
-                    npm run build -- --configuration production
-                '''
-
-                sh '''
-                    test -d "${ANGULAR_DIST}" || {
-                        echo "Angular build output not found: ${ANGULAR_DIST}"
-                        exit 1
-                    }
+                    docker run --rm \
+                    -v "$WORKSPACE:/app" \
+                    -w /app \
+                    node:22-alpine \
+                    sh -c "npm run build -- --configuration production"
                 '''
             }
         }

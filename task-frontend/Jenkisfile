@@ -1,0 +1,165 @@
+pipeline {
+    agent any
+
+    environment {
+        // Docker Hub
+        DOCKER_IMAGE = 'zchadli/task-frontend'
+        DOCKER_TAG = "${BUILD_NUMBER}"
+        DOCKER_CREDENTIALS = 'dockerhub-credentials'
+
+        // SonarQube
+        SONAR_SERVER = 'SonarQube'
+        SONAR_PROJECT_KEY = 'task-frontend'
+
+        // Kubernetes
+        K8S_NAMESPACE = 'default'
+        K8S_DEPLOYMENT = 'task-frontend'
+        K8S_CONTAINER = 'task-frontend'
+
+        // Angular output directory
+        ANGULAR_DIST = 'dist/task-frontend/browser'
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                echo 'Checking out Angular frontend'
+                checkout scm
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                echo 'Installing Angular dependencies'
+                sh 'node --version'
+                sh 'npm --version'
+                sh 'npm ci'
+            }
+        }
+
+        stage('Angular Production Build') {
+            steps {
+                echo 'Building Angular application'
+                sh '''
+                    npm run build -- --configuration production
+                '''
+
+                sh '''
+                    test -d "${ANGULAR_DIST}" || {
+                        echo "Angular build output not found: ${ANGULAR_DIST}"
+                        exit 1
+                    }
+                '''
+            }
+        }
+
+        stage('Tests') {
+            steps {
+                echo 'No automated Angular tests configured yet.'
+                echo 'Skipping tests for now.'
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                script {
+                    def scannerHome = tool 'SonarScanner'
+
+                    withSonarQubeEnv("${SONAR_SERVER}") {
+                        sh """
+                            ${scannerHome}/bin/sonar-scanner \
+                            -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                            -Dsonar.projectName=task-frontend \
+                            -Dsonar.sources=src \
+                            -Dsonar.sourceEncoding=UTF-8 \
+                            -Dsonar.exclusions=**/node_modules/**,**/dist/**
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    script {
+                        def qualityGate = waitForQualityGate()
+                        if (qualityGate.status != 'OK') {
+                            error "SonarQube Quality Gate failed: ${qualityGate.status}"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                echo 'Building Angular Docker image'
+
+                sh '''
+                    docker build \
+                    --build-arg DIST_DIR=${ANGULAR_DIST} \
+                    -t ${DOCKER_IMAGE}:${DOCKER_TAG} \
+                    -t ${DOCKER_IMAGE}:latest .
+                '''
+            }
+        }
+
+        stage('Docker Push') {
+            steps {
+                echo 'Publishing image to Docker Hub'
+
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: "${DOCKER_CREDENTIALS}",
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login \
+                            -u "$DOCKER_USER" --password-stdin
+
+                        docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
+                        docker push ${DOCKER_IMAGE}:latest
+
+                        docker logout
+                    '''
+                }
+            }
+        }
+
+        stage('Kubernetes Deploy') {
+            steps {
+                echo 'Deploying Angular frontend to Kubernetes'
+
+                sh '''
+                    kubectl set image \
+                    deployment/${K8S_DEPLOYMENT} \
+                    ${K8S_CONTAINER}=${DOCKER_IMAGE}:${DOCKER_TAG} \
+                    -n ${K8S_NAMESPACE}
+
+                    kubectl rollout status \
+                    deployment/${K8S_DEPLOYMENT} \
+                    -n ${K8S_NAMESPACE} \
+                    --timeout=120s
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Frontend CI/CD pipeline SUCCESS!'
+        }
+
+        failure {
+            echo 'Frontend CI/CD pipeline FAILURE!'
+        }
+
+        always {
+            echo 'Frontend pipeline finished.'
+        }
+    }
+}

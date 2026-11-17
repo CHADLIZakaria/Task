@@ -30,13 +30,14 @@ pipeline {
 
                     sh '''
                         docker run --rm \
+                            --network host \
                             -v "$PWD:/app" \
                             -w /app \
                             node:22-bookworm \
                             sh -c '
-                                npm install -g npm@10.8.2
-                                npm --version
-                                npm ci --no-audit --no-fund --loglevel verbose
+                                npm install -g npm@10.8.2 &&
+                                npm --version &&
+                                npm ci --no-audit --no-fund
                             '
                     '''
                 }

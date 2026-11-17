@@ -1,4 +1,4 @@
 CREATE TABLE task (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    description varchar(255)
-)
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    description VARCHAR(255)
+);

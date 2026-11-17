@@ -34,10 +34,9 @@ pipeline {
                             -w /app \
                             node:22-bookworm \
                             sh -c '
-                                node --version
+                                npm install -g npm@10.8.2
                                 npm --version
-                                npm cache verify
-                                npm ci --no-audit --no-fund
+                                npm ci --no-audit --no-fund --loglevel verbose
                             '
                     '''
                 }

@@ -10,6 +10,10 @@ pipeline {
         SONAR_SERVER = 'SonarQube'
     }
 
+    triggers {
+        githubPush()
+    }
+
     stages {
 
         stage('Checkout') {

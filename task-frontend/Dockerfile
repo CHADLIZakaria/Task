@@ -1,5 +1,7 @@
 # Build stage
-FROM node:22-bookworm-slim AS build
+FROM node:22-bookworm AS build
+
+RUN npm install -g npm@10.8.2
 
 WORKDIR /app
 

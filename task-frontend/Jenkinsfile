@@ -77,19 +77,21 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 dir('task-frontend') {
-                    script {
-                        def scannerHome = tool 'SonarScanner'
-
-                        withSonarQubeEnv("${SONAR_SERVER}") {
-                            sh """
-                                ${scannerHome}/bin/sonar-scanner \
-                                -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                    withSonarQubeEnv('SonarQube') {
+                        sh '''
+                            docker run --rm --network host \
+                                -v "$PWD":/usr/src \
+                                -w /usr/src \
+                                -e SONAR_HOST_URL="$SONAR_HOST_URL" \
+                                -e SONAR_AUTH_TOKEN="$SONAR_AUTH_TOKEN" \
+                                sonarsource/sonar-scanner-cli:latest \
+                                -Dsonar.projectKey=task-frontend \
                                 -Dsonar.projectName=task-frontend \
                                 -Dsonar.sources=src \
-                                -Dsonar.sourceEncoding=UTF-8 \
-                                -Dsonar.exclusions=**/node_modules/**,**/dist/**
-                            """
-                        }
+                                -Dsonar.exclusions=node_modules/**,dist/** \
+                                -Dsonar.host.url="$SONAR_HOST_URL" \
+                                -Dsonar.token="$SONAR_AUTH_TOKEN"
+                        '''
                     }
                 }
             }

@@ -62,19 +62,23 @@ pipeline {
             }
         }
 
+        
         stage('Docker Build') {
             steps {
                 dir('task-frontend') {
                     echo 'Building Angular production image'
 
                     sh '''
-                        docker build --progress=plain \
+                        docker build \
+                            --network host \
+                            --progress=plain \
                             -t ${DOCKER_IMAGE}:${DOCKER_TAG} \
                             -t ${DOCKER_IMAGE}:latest .
                     '''
                 }
             }
         }
+
 
         stage('Docker Push') {
             steps {

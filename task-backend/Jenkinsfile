@@ -1,18 +1,33 @@
+
 pipeline {
     agent any
 
     environment {
-        REGISTRY_USER = 'zchadli'
-        IMAGE = "${REGISTRY_USER}/task-backend"
-    }
+        IMAGE = 'zchadli/task-backend'
+        DOCKER_CREDENTIALS = 'dockerhub'
 
-    triggers {
-        githubPush()
+        SONAR_PROJECT_KEY = 'task-backend'
+        SONAR_SERVER = 'SonarQube'
     }
 
     stages {
 
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
         stage('Build & Test') {
+            when {
+                anyOf {
+                    expression {
+                        env.CHANGE_ID != null &&
+                        env.CHANGE_TARGET == 'prod'
+                    }
+                    branch 'prod'
+                }
+            }
             steps {
                 dir('task-backend') {
                     sh '''
@@ -20,34 +35,34 @@ pipeline {
                             -v "$PWD":/app \
                             -w /app \
                             maven:3.9-eclipse-temurin-21 \
-                            mvn -B verify
+                            mvn -B clean verify
                     '''
                 }
             }
         }
 
         stage('Get Version') {
+            when {
+                branch 'prod'
+            }
             steps {
                 dir('task-backend') {
                     script {
                         env.TAG = sh(
                             script: '''
-                        awk '
-                            /<parent>/ { parent=1 }
-                            /<\\/parent>/ { parent=0; next }
-                            !parent && /<version>/ {
-                                gsub(/.*<version>/, "")
-                                gsub(/<\\/version>.*/, "")
-                                print
-                                exit
-                            }
-                        ' pom.xml
-                    ''',
+                                docker run --rm \
+                                    -v "$PWD":/app \
+                                    -w /app \
+                                    maven:3.9-eclipse-temurin-21 \
+                                    mvn -q -DforceStdout \
+                                    help:evaluate \
+                                    -Dexpression=project.version
+                            ''',
                             returnStdout: true
                         ).trim()
 
                         if (!env.TAG) {
-                            error('Version introuvable dans pom.xml')
+                            error('Version not found')
                         }
 
                         echo "Application version: ${env.TAG}"
@@ -56,30 +71,61 @@ pipeline {
             }
         }
 
-
         stage('SonarQube Analysis') {
+            when {
+                anyOf {
+                    expression {
+                        env.CHANGE_ID != null &&
+                        env.CHANGE_TARGET == 'prod'
+                    }
+                    branch 'prod'
+                }
+            }
             steps {
                 dir('task-backend') {
                     withSonarQubeEnv('SonarQube') {
                         sh '''
-                        docker run --rm --network host \
-                            -v "$PWD":/app \
-                            -w /app \
-                            -e SONAR_HOST_URL="$SONAR_HOST_URL" \
-                            -e SONAR_AUTH_TOKEN="$SONAR_AUTH_TOKEN" \
-                            maven:3.9-eclipse-temurin-21 \
-                            mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:5.0.0.4389:sonar \
-                            -Dsonar.projectKey=task-backend \
-                            -Dsonar.projectName=task-backend \
-                            -Dsonar.host.url="$SONAR_HOST_URL" \
-                            -Dsonar.token="$SONAR_AUTH_TOKEN"
-                    '''
+                            docker run --rm --network host \
+                                -v "$PWD":/app \
+                                -w /app \
+                                -e SONAR_HOST_URL="$SONAR_HOST_URL" \
+                                -e SONAR_AUTH_TOKEN="$SONAR_AUTH_TOKEN" \
+                                -e CHANGE_ID="$CHANGE_ID" \
+                                -e CHANGE_BRANCH="$CHANGE_BRANCH" \
+                                -e CHANGE_TARGET="$CHANGE_TARGET" \
+                                maven:3.9-eclipse-temurin-21 \
+                                sh -c '
+                                    if [ -n "$CHANGE_ID" ]; then
+                                        mvn -B sonar:sonar \
+                                            -Dsonar.projectKey=task-backend \
+                                            -Dsonar.host.url="$SONAR_HOST_URL" \
+                                            -Dsonar.token="$SONAR_AUTH_TOKEN" \
+                                            -Dsonar.pullrequest.key="$CHANGE_ID" \
+                                            -Dsonar.pullrequest.branch="$CHANGE_BRANCH" \
+                                            -Dsonar.pullrequest.base="$CHANGE_TARGET"
+                                    else
+                                        mvn -B sonar:sonar \
+                                            -Dsonar.projectKey=task-backend \
+                                            -Dsonar.host.url="$SONAR_HOST_URL" \
+                                            -Dsonar.token="$SONAR_AUTH_TOKEN"
+                                    fi
+                                '
+                        '''
                     }
                 }
             }
         }
 
         stage('Quality Gate') {
+            when {
+                anyOf {
+                    expression {
+                        env.CHANGE_ID != null &&
+                        env.CHANGE_TARGET == 'prod'
+                    }
+                    branch 'prod'
+                }
+            }
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
@@ -88,17 +134,24 @@ pipeline {
         }
 
         stage('Docker Build') {
+            when {
+                branch 'prod'
+            }
             steps {
                 dir('task-backend') {
                     sh '''
-                        docker build --network host \
-                            -t ${IMAGE}:${TAG} .
+                        docker build \
+                            -t ${IMAGE}:${TAG} \
+                            -t ${IMAGE}:latest .
                     '''
                 }
             }
         }
 
-        stage('Push') {
+        stage('Docker Push') {
+            when {
+                branch 'prod'
+            }
             steps {
                 withCredentials([
                         usernamePassword(
@@ -112,35 +165,28 @@ pipeline {
                             -u "$DH_USER" --password-stdin
 
                         docker push ${IMAGE}:${TAG}
+                        docker push ${IMAGE}:latest
+
+                        docker logout
                     '''
                 }
             }
         }
 
-        stage('Deploy') {
-            steps {
-                dir('task-backend') {
-                    sh '''
-                        helm upgrade --install task-backend ./chart \
-                            --set-string image.repository=${IMAGE} \
-                            --set-string image.tag=${TAG} \
-                            --namespace task \
-                            --create-namespace \
-                            --wait \
-                            --timeout 3m
-                    '''
-                }
-            }
-        }
     }
 
     post {
         success {
-            echo "Pipeline successful! Deployed version: ${TAG}"
+            echo "CI/CD successful: ${IMAGE}:${TAG}"
+            echo 'Light Cloud handles production deployment automatically.'
         }
 
         failure {
-            echo 'Pipeline en échec'
+            echo 'Pipeline failed!'
+        }
+
+        always {
+            echo 'Pipeline finished.'
         }
     }
 }
